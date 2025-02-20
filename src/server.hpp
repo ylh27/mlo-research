@@ -13,12 +13,14 @@
 
 #include <iostream>
 #include <string>
+#include <vector>
 
 #include "helper.hpp"
 
 #define DEBUG_SERVER 1
 
 #define BACKLOG 10 // how many pending connections queue will hold
+#define MAXDATASIZE 1472
 
 int server(std::string port)
 {
@@ -29,12 +31,12 @@ int server(std::string port)
     struct addrinfo hints, *servinfo, *p;
     struct sockaddr_storage their_addr; // connector's address information
     socklen_t sin_size;
-    struct sigaction sa;
     int yes = 1;
     char s[INET6_ADDRSTRLEN];
     int rv;
     std::vector<pid_t> children;
     bool master = true;
+    struct sigaction sa;
 
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_UNSPEC;
@@ -45,6 +47,15 @@ int server(std::string port)
     {
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
         return 1;
+    }
+
+    sa.sa_handler = sigchld_handler; // reap all dead processes
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART;
+    if (sigaction(SIGCHLD, &sa, NULL) == -1)
+    {
+        perror("sigaction");
+        exit(1);
     }
 
     // loop through all the results and bind to the first we can
@@ -85,13 +96,16 @@ int server(std::string port)
         }
     }
 
-    if (p == NULL)
+    if (p == NULL && !master)
     {
         fprintf(stderr, "server: failed to bind\n");
         return 2;
     }
 
     freeaddrinfo(servinfo); // all done with this structure
+
+    std::string buf;
+    ssize_t numbytes;
 
     if (!master)
     {
@@ -101,16 +115,9 @@ int server(std::string port)
             exit(1);
         }
 
-        sa.sa_handler = sigchld_handler; // reap all dead processes
-        sigemptyset(&sa.sa_mask);
-        sa.sa_flags = SA_RESTART;
-        if (sigaction(SIGCHLD, &sa, NULL) == -1)
-        {
-            perror("sigaction");
-            exit(1);
-        }
-
         printf("server: waiting for connections...\n");
+
+        buf.resize(MAXDATASIZE);
 
         while (1) // main accept() loop
         {
@@ -126,17 +133,25 @@ int server(std::string port)
                       get_in_addr((struct sockaddr *)&their_addr),
                       s, sizeof s);
             printf("server: got connection from %s\n", s);
-
-            if (!fork())
-            {                  // this is the child process
-                close(sockfd); // child doesn't need the listener
-                if (send(new_fd, "Hello, world!", 13, 0) == -1)
-                    perror("send");
-                close(new_fd);
-                exit(0);
-            }
-            close(new_fd); // parent doesn't need this
         }
+
+        while ((numbytes = recv(sockfd, buf.data(), MAXDATASIZE - 1, 0)) > 0)
+        {
+            buf.resize(numbytes);
+            std::cout << "server: received '" << buf << "'" << std::endl;
+            buf.resize(MAXDATASIZE);
+        }
+
+        if (numbytes == -1)
+        {
+            perror("recv");
+            exit(1);
+        }
+
+        close(sockfd);
+    }
+    else
+    {
     }
 
     return 0;

@@ -13,12 +13,13 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <array>
 
 #include "helper.hpp"
 
 #define DEBUG_CLIENT 1
 
-#define MAXDATASIZE 100 // max number of bytes we can get at once
+#define MAXDATASIZE 1472 // max number of bytes we can get at once
 
 int client(std::vector<std::string> ips, std::string port, std::string file, std::string algorithm)
 {
@@ -29,23 +30,41 @@ int client(std::vector<std::string> ips, std::string port, std::string file, std
     std::cout << "file: " << file << std::endl;
     std::cout << "algorithm: " << algorithm << std::endl;
 #endif
-    int sockfd, numbytes;
-    char buf[MAXDATASIZE];
+    int sockfd;
+    ssize_t numbytes;
     struct addrinfo hints, *servinfo, *p;
     int rv;
     char s[INET6_ADDRSTRLEN];
     std::vector<pid_t> children;
     bool master = true;
+    struct sigaction sa;
 
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
 
+    sa.sa_handler = sigchld_handler; // reap all dead processes
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART;
+    if (sigaction(SIGCHLD, &sa, NULL) == -1)
+    {
+        perror("sigaction");
+        exit(1);
+    }
+
+    std::vector<std::array<int, 2>> pipes;
     std::string ip;
     while (!ips.empty())
     {
         ip = ips.back();
         ips.pop_back();
+
+        pipes.push_back({0, 0});
+        if (pipe(pipes.back().data()) != 0)
+        {
+            perror("pipe");
+            exit(1);
+        }
 
         pid_t child = fork();
         if (child == 0) // child
@@ -62,6 +81,8 @@ int client(std::vector<std::string> ips, std::string port, std::string file, std
 
     if (!master)
     {
+        close(pipes.back()[1]); // close write end
+
         if ((rv = getaddrinfo(ip.data(), port.data(), &hints, &servinfo)) != 0)
         {
             fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
@@ -100,17 +121,63 @@ int client(std::vector<std::string> ips, std::string port, std::string file, std
 
         freeaddrinfo(servinfo); // all done with this structure
 
-        if ((numbytes = recv(sockfd, buf, MAXDATASIZE - 1, 0)) == -1)
+        std::string buf;
+        buf.resize(MAXDATASIZE);
+
+        // send data from pipe
+        while ((numbytes = read(pipes.back()[0], buf.data(), MAXDATASIZE)) > 0)
         {
-            perror("recv");
+            buf.resize(numbytes);
+            if (send(sockfd, buf.data(), buf.size(), 0) == -1)
+            {
+                perror("send");
+                exit(1);
+            }
+            buf.resize(MAXDATASIZE);
+        }
+
+        if (numbytes == -1)
+        {
+            perror("read");
             exit(1);
         }
 
-        buf[numbytes] = '\0';
-
-        printf("client: received '%s'\n", buf);
-
+        close(pipes.back()[0]); // close read end
         close(sockfd);
+    }
+    else
+    {
+        for (auto &pipe : pipes)
+            close(pipe[0]); // close read end
+
+        FILE *fp = fopen(file.data(), "rb");
+        if (fp == NULL)
+        {
+            perror("fopen");
+            for (auto &pipe : pipes)
+                close(pipe[1]); // close write end
+            for (auto child : children)
+                kill(child, SIGKILL);
+            exit(1);
+        }
+
+        std::string buf;
+        buf.resize(MAXDATASIZE);
+
+        // read file
+        while ((numbytes = fread(buf.data(), 1, MAXDATASIZE, fp)) > 0)
+        {
+            buf.resize(numbytes);
+
+            write(pipes[rand() % pipes.size()][1], buf.data(), buf.size());
+            // TODO: change to proper algorithm
+
+            buf.resize(MAXDATASIZE);
+        }
+
+        for (auto &pipe : pipes)
+            close(pipe[1]); // close write end
+        fclose(fp);
     }
 
     return 0;
