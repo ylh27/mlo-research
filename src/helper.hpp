@@ -9,6 +9,8 @@
 #include <signal.h>
 #include <sys/wait.h>
 
+#define END "\r\n\r\nEOF\r\n\r\n"
+
 void sigchld_handler(int s)
 {
     while (waitpid(-1, NULL, WNOHANG) > 0)

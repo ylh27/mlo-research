@@ -58,6 +58,13 @@ int server(std::string port)
         exit(1);
     }
 
+    int pipes[2];
+    if (pipe(pipes) == -1)
+    {
+        perror("pipe");
+        exit(1);
+    }
+
     // loop through all the results and bind to the first we can
     for (p = servinfo; p != NULL; p = p->ai_next)
     {
@@ -107,8 +114,12 @@ int server(std::string port)
     std::string buf;
     ssize_t numbytes;
 
+    FILE *fp;
+
     if (!master)
     {
+        close(pipes[0]); // close read end
+
         if (listen(sockfd, BACKLOG) == -1)
         {
             perror("listen");
@@ -119,26 +130,36 @@ int server(std::string port)
 
         buf.resize(MAXDATASIZE);
 
-        while (1) // main accept() loop
+        sin_size = sizeof their_addr;
+        new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &sin_size);
+        if (new_fd == -1)
         {
-            sin_size = sizeof their_addr;
-            new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &sin_size);
-            if (new_fd == -1)
-            {
-                perror("accept");
-                continue;
-            }
-
-            inet_ntop(their_addr.ss_family,
-                      get_in_addr((struct sockaddr *)&their_addr),
-                      s, sizeof s);
-            printf("server: got connection from %s\n", s);
+            perror("accept");
+            exit(1);
         }
+
+        inet_ntop(their_addr.ss_family,
+                  get_in_addr((struct sockaddr *)&their_addr),
+                  s, sizeof s);
+        printf("server: got connection from %s\n", s);
 
         while ((numbytes = recv(sockfd, buf.data(), MAXDATASIZE - 1, 0)) > 0)
         {
             buf.resize(numbytes);
+#ifdef DEBUG_SERVER
             std::cout << "server: received '" << buf << "'" << std::endl;
+#endif
+            fp = fopen("output", "a");
+            fwrite(buf.data(), 1, buf.size(), fp);
+            fclose(fp);
+
+            if (buf == END)
+            {
+                write(pipes[1], END, strlen(END));
+                close(pipes[1]); // close write end
+                break;
+            }
+
             buf.resize(MAXDATASIZE);
         }
 
@@ -152,6 +173,28 @@ int server(std::string port)
     }
     else
     {
+        close(pipes[1]); // close write end
+    
+        fp = fopen("output", "w");
+        fclose(fp);
+
+        buf.resize(MAXDATASIZE);
+        while ((numbytes = read(pipes[0], buf.data(), MAXDATASIZE)) > 0)
+        {
+            buf.resize(numbytes);
+            if (buf == END)
+                break;
+        }
+
+        if (numbytes == -1)
+        {
+            perror("read");
+            exit(1);
+        }
+
+        close(pipes[0]); // close read end
+        for (auto &child : children)
+            kill(child, SIGTERM);
     }
 
     return 0;

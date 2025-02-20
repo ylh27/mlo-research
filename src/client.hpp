@@ -175,6 +175,10 @@ int client(std::vector<std::string> ips, std::string port, std::string file, std
             buf.resize(MAXDATASIZE);
         }
 
+        buf = END;
+        write(pipes[rand() % pipes.size()][1], buf.data(), buf.size());
+        // TODO: change to proper algorithm
+
         for (auto &pipe : pipes)
             close(pipe[1]); // close write end
         fclose(fp);
