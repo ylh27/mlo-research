@@ -143,15 +143,13 @@ int server(std::string port)
                   s, sizeof s);
         printf("server: got connection from %s\n", s);
 
-        while ((numbytes = recv(sockfd, buf.data(), MAXDATASIZE - 1, 0)) > 0)
+        while ((numbytes = recv(new_fd, buf.data(), buf.size(), 0)) > 0)
         {
             buf.resize(numbytes);
+
 #ifdef DEBUG_SERVER
             std::cout << "server: received '" << buf << "'" << std::endl;
 #endif
-            fp = fopen("output", "a");
-            fwrite(buf.data(), 1, buf.size(), fp);
-            fclose(fp);
 
             if (buf == END)
             {
@@ -159,6 +157,10 @@ int server(std::string port)
                 close(pipes[1]); // close write end
                 break;
             }
+
+            fp = fopen("output", "a");
+            fwrite(buf.data(), 1, buf.size(), fp);
+            fclose(fp);
 
             buf.resize(MAXDATASIZE);
         }
@@ -174,7 +176,7 @@ int server(std::string port)
     else
     {
         close(pipes[1]); // close write end
-    
+
         fp = fopen("output", "w");
         fclose(fp);
 

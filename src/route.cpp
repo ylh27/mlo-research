@@ -72,7 +72,7 @@ int main(int argc, char *argv[])
     // check neccessary args set
     if (arg.mode == ""                                                                           // no mode
         || (arg.mode == "server" && (false))                                                     // server mode
-        || (arg.mode == "client" && (arg.ips.empty() || arg.file == "" || arg.algorithm == ""))) // client mode
+        || (arg.mode == "client" && (arg.ips.empty() || arg.file == ""))) // client mode
     {
         print_usage(argv[0]);
         return 1;

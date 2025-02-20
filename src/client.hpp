@@ -128,6 +128,9 @@ int client(std::vector<std::string> ips, std::string port, std::string file, std
         while ((numbytes = read(pipes.back()[0], buf.data(), MAXDATASIZE)) > 0)
         {
             buf.resize(numbytes);
+#ifdef DEBUG_CLIENT
+            std::cout << "sending: " << buf << std::endl;
+#endif
             if (send(sockfd, buf.data(), buf.size(), 0) == -1)
             {
                 perror("send");
@@ -169,12 +172,18 @@ int client(std::vector<std::string> ips, std::string port, std::string file, std
         {
             buf.resize(numbytes);
 
+#ifdef DEBUG_CLIENT
+            std::cout << "writing to pipe: " << buf << std::endl;
+#endif
+
             write(pipes[rand() % pipes.size()][1], buf.data(), buf.size());
             // TODO: change to proper algorithm
 
             buf.resize(MAXDATASIZE);
         }
 
+        // delay
+        sleep(1);
         buf = END;
         write(pipes[rand() % pipes.size()][1], buf.data(), buf.size());
         // TODO: change to proper algorithm
