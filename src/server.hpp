@@ -34,8 +34,6 @@ int server(std::string port)
     int yes = 1;
     char s[INET6_ADDRSTRLEN];
     int rv;
-    std::vector<pid_t> children;
-    bool master = true;
     struct sigaction sa;
 
     memset(&hints, 0, sizeof hints);
@@ -55,13 +53,6 @@ int server(std::string port)
     if (sigaction(SIGCHLD, &sa, NULL) == -1)
     {
         perror("sigaction");
-        exit(1);
-    }
-
-    int pipes[2];
-    if (pipe(pipes) == -1)
-    {
-        perror("pipe");
         exit(1);
     }
 
@@ -89,21 +80,10 @@ int server(std::string port)
             continue;
         }
 
-        // spwan child
-        pid_t child = fork();
-        if (child == 0) // child
-        {
-            master = false;
-            break;
-        }
-        else // parent
-        {
-            children.push_back(child);
-            continue;
-        }
+        break;
     }
 
-    if (p == NULL && !master)
+    if (p == NULL)
     {
         fprintf(stderr, "server: failed to bind\n");
         return 2;
@@ -115,89 +95,59 @@ int server(std::string port)
     ssize_t numbytes;
 
     FILE *fp;
+    fp = fopen("output", "w");
+    fclose(fp);
 
-    if (!master)
+    if (listen(sockfd, BACKLOG) == -1)
     {
-        close(pipes[0]); // close read end
+        perror("listen");
+        exit(1);
+    }
 
-        if (listen(sockfd, BACKLOG) == -1)
-        {
-            perror("listen");
-            exit(1);
-        }
+    printf("server: waiting for connections...\n");
 
-        printf("server: waiting for connections...\n");
+    buf.resize(MAXDATASIZE);
 
-        buf.resize(MAXDATASIZE);
+    sin_size = sizeof their_addr;
+    new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &sin_size);
+    if (new_fd == -1)
+    {
+        perror("accept");
+        exit(1);
+    }
 
-        sin_size = sizeof their_addr;
-        new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &sin_size);
-        if (new_fd == -1)
-        {
-            perror("accept");
-            exit(1);
-        }
+    inet_ntop(their_addr.ss_family,
+              get_in_addr((struct sockaddr *)&their_addr),
+              s, sizeof s);
+    printf("server: got connection from %s\n", s);
 
-        inet_ntop(their_addr.ss_family,
-                  get_in_addr((struct sockaddr *)&their_addr),
-                  s, sizeof s);
-        printf("server: got connection from %s\n", s);
-
-        while ((numbytes = recv(new_fd, buf.data(), buf.size(), 0)) > 0)
-        {
-            buf.resize(numbytes);
+    while ((numbytes = recv(new_fd, buf.data(), buf.size(), 0)) > 0)
+    {
+        buf.resize(numbytes);
 
 #ifdef DEBUG_SERVER
-            std::cout << "server: received '" << buf << "'" << std::endl;
+        std::cout << "server: received '" << buf << "'" << std::endl;
 #endif
 
-            if (buf == END)
-            {
-                write(pipes[1], END, strlen(END));
-                close(pipes[1]); // close write end
-                break;
-            }
-
-            fp = fopen("output", "a");
-            fwrite(buf.data(), 1, buf.size(), fp);
-            fclose(fp);
-
-            buf.resize(MAXDATASIZE);
-        }
-
-        if (numbytes == -1)
+        if (buf == END)
         {
-            perror("recv");
-            exit(1);
+            break;
         }
 
-        close(sockfd);
-    }
-    else
-    {
-        close(pipes[1]); // close write end
-
-        fp = fopen("output", "w");
+        fp = fopen("output", "a");
+        fwrite(buf.data(), 1, buf.size(), fp);
         fclose(fp);
 
         buf.resize(MAXDATASIZE);
-        while ((numbytes = read(pipes[0], buf.data(), MAXDATASIZE)) > 0)
-        {
-            buf.resize(numbytes);
-            if (buf == END)
-                break;
-        }
-
-        if (numbytes == -1)
-        {
-            perror("read");
-            exit(1);
-        }
-
-        close(pipes[0]); // close read end
-        for (auto &child : children)
-            kill(child, SIGTERM);
     }
+
+    if (numbytes == -1)
+    {
+        perror("recv");
+        exit(1);
+    }
+
+    close(sockfd);
 
     return 0;
 }
