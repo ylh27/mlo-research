@@ -121,16 +121,21 @@ int server(std::string port)
               s, sizeof s);
     printf("server: got connection from %s\n", s);
 
+    // main recv loop
     while ((numbytes = recv(new_fd, buf.data(), buf.size(), 0)) > 0)
     {
         buf.resize(numbytes);
 
 #ifdef DEBUG_SERVER
-        std::cout << "server: received '" << buf << "'" << std::endl;
+        std::cout << "server: packet: " << *(unsigned *)buf.data() << std::endl;
+        std::cout << "server: received '" << buf.substr(sizeof(unsigned)) << "'" << std::endl;
 #endif
 
-        if (buf == END)
+        if (buf.substr(sizeof(unsigned)) == END)
         {
+#ifdef DEBUG_SERVER
+            std::cout << "total packets: " << *(unsigned *)buf.data() << std::endl;
+#endif
             break;
         }
 

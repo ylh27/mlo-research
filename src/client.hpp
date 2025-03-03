@@ -20,6 +20,7 @@
 #define DEBUG_CLIENT 1
 
 #define MAXDATASIZE 1472 // max number of bytes we can get at once
+#define MAXPAYLOAD (MAXDATASIZE - sizeof(unsigned))
 
 int client(std::vector<std::string> ips, std::string port, std::string file, std::string algorithm)
 {
@@ -136,6 +137,7 @@ int client(std::vector<std::string> ips, std::string port, std::string file, std
                 perror("send");
                 exit(1);
             }
+            buf.clear();
             buf.resize(MAXDATASIZE);
         }
 
@@ -149,9 +151,11 @@ int client(std::vector<std::string> ips, std::string port, std::string file, std
         close(sockfd);
     }
     else
-    {
+    { // master
         for (auto &pipe : pipes)
             close(pipe[0]); // close read end
+
+        unsigned sent = 0; // number of packets sent
 
         FILE *fp = fopen(file.data(), "rb");
         if (fp == NULL)
@@ -168,12 +172,15 @@ int client(std::vector<std::string> ips, std::string port, std::string file, std
         buf.resize(MAXDATASIZE);
 
         // read file
-        while ((numbytes = fread(buf.data(), 1, MAXDATASIZE, fp)) > 0)
+        while ((numbytes = fread(buf.data() + sizeof(unsigned), 1, MAXPAYLOAD, fp)) > 0)
         {
-            buf.resize(numbytes);
+            *(unsigned *)buf.data() = sent;
+            sent++;
+            buf.resize(numbytes + sizeof(unsigned));
 
 #ifdef DEBUG_CLIENT
-            std::cout << "writing to pipe: " << buf << std::endl;
+            std::cout << "packet: " << *(unsigned *)buf.data() << std::endl;
+            std::cout << "writing to pipe: " << buf.substr(sizeof(sizeof(unsigned))) << std::endl;
 #endif
 
             write(pipes[rand() % pipes.size()][1], buf.data(), buf.size());
@@ -184,7 +191,9 @@ int client(std::vector<std::string> ips, std::string port, std::string file, std
 
         // delay
         sleep(1);
-        buf = END;
+        *(unsigned *)buf.data() = sent;
+        buf.resize(sizeof(unsigned));
+        buf += END;
         write(pipes[rand() % pipes.size()][1], buf.data(), buf.size());
         // TODO: change to proper algorithm
 
