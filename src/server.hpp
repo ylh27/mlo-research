@@ -17,7 +17,7 @@
 
 #include "helper.hpp"
 
-#define DEBUG_SERVER 1
+// #define DEBUG_SERVER 1
 
 #define BACKLOG 10 // how many pending connections queue will hold
 #define MAXDATASIZE 1472
@@ -27,7 +27,7 @@ int server(std::string port)
 #ifdef DEBUG_SERVER
     std::cout << "port: " << port << std::endl;
 #endif
-    int sockfd, new_fd; // listen on sock_fd, new connection on new_fd
+    int sockfd; // listen on sock_fd
     struct addrinfo hints, *servinfo, *p;
     struct sockaddr_storage their_addr; // connector's address information
     socklen_t sin_size;
@@ -38,7 +38,7 @@ int server(std::string port)
 
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_socktype = SOCK_DGRAM;
     hints.ai_flags = AI_PASSIVE; // use my IP
 
     if ((rv = getaddrinfo(NULL, port.data(), &hints, &servinfo)) != 0)
@@ -98,49 +98,33 @@ int server(std::string port)
     fp = fopen("output", "w");
     fclose(fp);
 
-    if (listen(sockfd, BACKLOG) == -1)
-    {
-        perror("listen");
-        exit(1);
-    }
-
     printf("server: waiting for connections...\n");
 
     buf.resize(MAXDATASIZE);
 
-    sin_size = sizeof their_addr;
-    new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &sin_size);
-    if (new_fd == -1)
-    {
-        perror("accept");
-        exit(1);
-    }
-
-    inet_ntop(their_addr.ss_family,
-              get_in_addr((struct sockaddr *)&their_addr),
-              s, sizeof s);
+    inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr *)&their_addr), s, sizeof(s));
     printf("server: got connection from %s\n", s);
 
     // main recv loop
-    while ((numbytes = recv(new_fd, buf.data(), buf.size(), 0)) > 0)
+    while ((numbytes = recvfrom(
+                sockfd, buf.data(), MAXDATASIZE, 0,
+                (struct sockaddr *)&their_addr, &sin_size)) > 0)
     {
         buf.resize(numbytes);
 
-#ifdef DEBUG_SERVER
-        std::cout << "server: packet: " << *(unsigned *)buf.data() << std::endl;
-        std::cout << "server: received '" << buf.substr(sizeof(unsigned)) << "'" << std::endl;
-#endif
-
         if (buf.substr(sizeof(unsigned)) == END)
         {
-#ifdef DEBUG_SERVER
-            std::cout << "total packets: " << *(unsigned *)buf.data() << std::endl;
-#endif
+            std::cout << "total packets expected: " << *(unsigned *)buf.data() << std::endl;
             break;
         }
 
+        std::cout << "server: packet: " << *(unsigned *)buf.data() << std::endl;
+#ifdef DEBUG_SERVER
+        std::cout << "server: received '" << buf.substr(sizeof(unsigned)) << "'" << std::endl;
+#endif
+
         fp = fopen("output", "a");
-        fwrite(buf.data(), 1, buf.size(), fp);
+        fwrite(buf.data() + sizeof(unsigned), 1, buf.size() - sizeof(unsigned), fp);
         fclose(fp);
 
         buf.resize(MAXDATASIZE);
