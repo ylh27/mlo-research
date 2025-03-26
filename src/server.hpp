@@ -103,14 +103,14 @@ int server(std::string port)
 
     buf.resize(MAXDATASIZE);
 
-    inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr *)&their_addr), s, sizeof(s));
-    printf("server: got connection from %s\n", s);
-
     // main recv loop
     while ((numbytes = recvfrom(
                 sockfd, buf.data(), MAXDATASIZE, 0,
                 (struct sockaddr *)&their_addr, &sin_size)) > 0)
     {
+        inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr *)&their_addr), s, sizeof(s));
+        printf("server: got connection from %s\n", s);
+
         buf.resize(numbytes);
 
         if (buf.substr(sizeof(unsigned)) == END)

@@ -154,9 +154,6 @@ int client(std::vector<std::string> ips, std::string port, std::string file, std
     else
     { // master
 
-        // Start timer as soon as master finishes spawning children
-        auto start = std::chrono::high_resolution_clock::now();
-
         for (auto &pipe : pipes)
             close(pipe[0]); // close read end
 
@@ -176,6 +173,10 @@ int client(std::vector<std::string> ips, std::string port, std::string file, std
         std::string buf;
         buf.resize(MAXDATASIZE);
 
+        std::chrono::time_point<std::chrono::system_clock> start, end;
+        start = std::chrono::system_clock::now();
+        // Start timer as soon as master finishes spawning children
+
         // read file
         while ((numbytes = fread(buf.data() + sizeof(unsigned), 1, MAXPAYLOAD, fp)) > 0)
         {
@@ -188,36 +189,40 @@ int client(std::vector<std::string> ips, std::string port, std::string file, std
 #endif
 
             int i = rand() % pipes.size();
+
+            while (buf.size() < MAXDATASIZE)
+                buf += " ";
+
             write(pipes[i][1], buf.data(), buf.size());
+
             std::cout << "[" << i << "] packet: " << sent << std::endl; // print which child and packet number
             // TODO: change to proper algorithm
 
             buf.resize(MAXDATASIZE);
         }
+        fclose(fp);
 
         // TODO: change to proper algorithm
         // Algorithm start
         // end signal
-        sleep(1); // delay
+
         *(unsigned *)buf.data() = sent;
         buf.resize(sizeof(unsigned));
         buf += END;
         std::cout << "total packets: " << sent << std::endl;
         write(pipes[rand() % pipes.size()][1], buf.data(), buf.size());
-        // Algo end
 
         for (auto &pipe : pipes)
             close(pipe[1]); // close write end
-        fclose(fp);
 
         // Waits for all the children to exit before returning
         while (wait(&status) > 1)
             ;
 
         // End Timer Logic Here
-        auto stop = std::chrono::high_resolution_clock::now();
-
-        std::cout << stop - start << "\n";
+        end = std::chrono::system_clock::now();
+        std::chrono::duration<double, std::milli> elapsed_milliseconds = end - start;
+        std::cout << "elapsed time: " << elapsed_milliseconds.count() << "ms\n";
     }
 
     return 0;
