@@ -215,6 +215,9 @@ int client(std::vector<std::string> ips, std::string port, std::string file, std
             ;
 
         // End Timer Logic Here
+        auto stop = std::chrono::high_resolution_clock::now();
+
+        std::cout << stop - start << "\n";
     }
 
     return 0;
