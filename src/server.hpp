@@ -15,6 +15,8 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <bits/stdc++.h>
+#include <algorithm>
 
 #include "helper.hpp"
 
@@ -23,7 +25,7 @@
 #define BACKLOG 10 // how many pending connections queue will hold
 #define MAXDATASIZE 1472
 
-int server(std::string port)
+int server(std::string port, bool verbose, bool continuous)
 {
 #ifdef DEBUG_SERVER
     std::cout << "port: " << port << std::endl;
@@ -103,6 +105,8 @@ int server(std::string port)
 
     buf.resize(MAXDATASIZE);
 
+    std::vector<unsigned> recieved;
+
     // main recv loop
     while ((numbytes = recvfrom(
                 sockfd, buf.data(), MAXDATASIZE, 0,
@@ -115,18 +119,48 @@ int server(std::string port)
 
         if (buf.substr(sizeof(unsigned)) == END)
         {
-            std::cout << "total packets expected: " << *(unsigned *)buf.data() << std::endl;
+            if (verbose)
+            {
+                std::cout << "total packets expected: " << *(unsigned *)buf.data() << std::endl;
+                std::cout << "total packets received: " << recieved.front() + recieved.size() << std::endl;
+            }
             break;
         }
 
-        std::cout << "server: packet: " << *(unsigned *)buf.data() << std::endl;
+        unsigned num = *(unsigned *)buf.data();
+        if (verbose)
+            std::cout << "server: packet: " << num << std::endl;
+
+        // selective ack
+        while (recieved.size() > 0 && num <= recieved.front() + 1)
+        {
+            recieved.front()++;
+            if (recieved.size() > 1)
+                num = recieved[1];
+            else
+                break;
+        }
+        if (std::find(recieved.begin(), recieved.end(), num) == recieved.end())
+        {
+            recieved.push_back(num);
+            std::sort(recieved.begin(), recieved.end());
+        }
+
 #ifdef DEBUG_SERVER
         std::cout << "server: received '" << buf.substr(sizeof(unsigned)) << "'" << std::endl;
 #endif
 
+        // write output
         fp = fopen("output", "a");
         fwrite(buf.data() + sizeof(unsigned), 1, buf.size() - sizeof(unsigned), fp);
         fclose(fp);
+
+        // send ack
+        unsigned size = std::min((unsigned)(sizeof(unsigned) * recieved.size()), (unsigned)MAXDATASIZE);
+        buf.resize(size);
+        for (unsigned i = 0; i < size / sizeof(unsigned); i++)
+            *((unsigned *)buf.data() + i) = recieved[i];
+        sendto(sockfd, buf.data(), buf.size(), 0, (struct sockaddr *)&their_addr, sin_size);
 
         buf.resize(MAXDATASIZE);
     }
@@ -138,6 +172,9 @@ int server(std::string port)
     }
 
     close(sockfd);
+
+    if (continuous)
+        return server(port, verbose, continuous);
 
     return 0;
 }

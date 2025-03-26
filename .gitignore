@@ -32,3 +32,9 @@
 # Other
 *.log
 *.tmp
+
+# Output
+output
+
+#binary
+route

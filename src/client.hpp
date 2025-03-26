@@ -23,7 +23,7 @@
 #define MAXDATASIZE 1472 // max number of bytes we can get at once
 #define MAXPAYLOAD (MAXDATASIZE - sizeof(unsigned))
 
-int client(std::vector<std::string> ips, std::string port, std::string file, std::string algorithm)
+int client(std::vector<std::string> ips, std::string port, std::string file, std::string algorithm, bool verbose)
 {
 #ifdef DEBUG_CLIENT
     for (auto i : ips)

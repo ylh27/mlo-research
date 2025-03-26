@@ -16,11 +16,13 @@ struct arg
     std::string port;
     std::string file;
     std::string algorithm;
+    bool verbose = false;
+    bool continuous = false;
 };
 
 void print_usage(char *argv)
 {
-    std::cout << "Usage: " << argv << " [-s|-c] [-i <ip>] [-p <port>] [-f <file>] [-a <algorithm>]" << std::endl;
+    std::cout << "Usage: " << argv << " [-s|-c] [-i <ip>] [-p <port>] [-f <file>] [-a <algorithm>] [-v] [-d]" << std::endl;
 }
 
 int main(int argc, char *argv[])
@@ -58,6 +60,19 @@ int main(int argc, char *argv[])
             arg.algorithm = argv[i + 1];
             i++;
         }
+        else if (std::string(argv[i]) == "-v")
+        {
+            arg.verbose = true;
+        }
+        else if (std::string(argv[i]) == "-d")
+        {
+            arg.continuous = true;
+        }
+        else
+        {
+            print_usage(argv[0]);
+            return 1;
+        }
     }
 
 #ifdef DEBUG
@@ -86,11 +101,11 @@ int main(int argc, char *argv[])
 
     if (arg.mode == "server")
     {
-        return server(arg.port);
+        return server(arg.port, arg.verbose, arg.continuous);
     }
     else if (arg.mode == "client")
     {
-        return client(arg.ips, arg.port, arg.file, arg.algorithm);
+        return client(arg.ips, arg.port, arg.file, arg.algorithm, arg.verbose);
     }
     else
     {
