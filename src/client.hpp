@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 #include <array>
+#include <chrono>
 
 #include "helper.hpp"
 
@@ -38,6 +39,7 @@ int client(std::vector<std::string> ips, std::string port, std::string file, std
     char s[INET6_ADDRSTRLEN];
     std::vector<pid_t> children;
     bool master = true;
+    int status;
     struct sigaction sa;
 
     memset(&hints, 0, sizeof hints);
@@ -66,7 +68,6 @@ int client(std::vector<std::string> ips, std::string port, std::string file, std
             perror("pipe");
             exit(1);
         }
-
         pid_t child = fork();
         if (child == 0) // child
         {
@@ -152,6 +153,10 @@ int client(std::vector<std::string> ips, std::string port, std::string file, std
     }
     else
     { // master
+
+        // Start timer as soon as master finishes spawning children
+        auto start = std::chrono::high_resolution_clock::now();
+
         for (auto &pipe : pipes)
             close(pipe[0]); // close read end
 
@@ -190,6 +195,8 @@ int client(std::vector<std::string> ips, std::string port, std::string file, std
             buf.resize(MAXDATASIZE);
         }
 
+        // TODO: change to proper algorithm
+        // Algorithm start
         // end signal
         sleep(1); // delay
         *(unsigned *)buf.data() = sent;
@@ -197,11 +204,17 @@ int client(std::vector<std::string> ips, std::string port, std::string file, std
         buf += END;
         std::cout << "total packets: " << sent << std::endl;
         write(pipes[rand() % pipes.size()][1], buf.data(), buf.size());
-        // TODO: change to proper algorithm
+        // Algo end
 
         for (auto &pipe : pipes)
             close(pipe[1]); // close write end
         fclose(fp);
+
+        // Waits for all the children to exit before returning
+        while (wait(&status) > 1)
+            ;
+
+        // End Timer Logic Here
     }
 
     return 0;
