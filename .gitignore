@@ -38,3 +38,6 @@ output
 
 #binary
 route
+
+#very bad file
+data/150mb.txt
