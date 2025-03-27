@@ -81,6 +81,7 @@ int client(std::vector<std::string> ips, std::string port, std::string file, std
         }
     }
 
+    std::chrono::time_point<std::chrono::system_clock> start, end;
     if (!master)
     {
         close(pipes.back()[1]); // close write end
@@ -149,6 +150,29 @@ int client(std::vector<std::string> ips, std::string port, std::string file, std
         }
 
         close(pipes.back()[0]); // close read end
+
+        // shutdown sequence
+
+        *(unsigned *)buf.data() = (unsigned)-1;
+        buf.resize(sizeof(unsigned));
+        buf += END;
+
+        // send end signal and calculate rtt
+        start = std::chrono::system_clock::now();
+        if (sendto(sockfd, buf.data(), buf.size(), 0, p->ai_addr, p->ai_addrlen) == -1)
+        {
+            perror("send");
+            exit(1);
+        }
+        if (recvfrom(sockfd, buf.data(), MAXDATASIZE, 0, p->ai_addr, &p->ai_addrlen) == -1)
+        {
+            perror("recvfrom");
+            exit(1);
+        }
+        end = std::chrono::system_clock::now();
+        std::chrono::duration<double, std::milli> elapsed_milliseconds = end - start;
+        std::cout << "pid: " << getpid() << " RTT: " << elapsed_milliseconds.count() << "ms\n";
+
         close(sockfd);
     }
     else
@@ -173,7 +197,6 @@ int client(std::vector<std::string> ips, std::string port, std::string file, std
         std::string buf;
         buf.resize(MAXDATASIZE);
 
-        std::chrono::time_point<std::chrono::system_clock> start, end;
         start = std::chrono::system_clock::now();
         // Start timer as soon as master finishes spawning children
 
@@ -190,9 +213,6 @@ int client(std::vector<std::string> ips, std::string port, std::string file, std
 
             int i = rand() % pipes.size();
 
-            while (buf.size() < MAXDATASIZE)
-                buf += " ";
-
             write(pipes[i][1], buf.data(), buf.size());
 
             if (verbose)
@@ -203,10 +223,6 @@ int client(std::vector<std::string> ips, std::string port, std::string file, std
         }
         fclose(fp);
 
-        // TODO: change to proper algorithm
-        // Algorithm start
-        // end signal
-
         *(unsigned *)buf.data() = sent;
         buf.resize(sizeof(unsigned));
         buf += END;
@@ -214,8 +230,9 @@ int client(std::vector<std::string> ips, std::string port, std::string file, std
             std::cout << "total packets: " << sent << std::endl;
         write(pipes[rand() % pipes.size()][1], buf.data(), buf.size());
 
+        // close all pipes
         for (auto &pipe : pipes)
-            close(pipe[1]); // close write end
+            close(pipe[1]);
 
         // Waits for all the children to exit before returning
         while (wait(&status) > 1)

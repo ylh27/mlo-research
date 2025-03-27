@@ -105,7 +105,7 @@ int server(std::string port, bool verbose, bool continuous)
 
     buf.resize(MAXDATASIZE);
 
-    std::vector<unsigned> recieved;
+    std::vector<unsigned> received;
 
     // main recv loop
     while ((numbytes = recvfrom(
@@ -117,12 +117,22 @@ int server(std::string port, bool verbose, bool continuous)
 
         buf.resize(numbytes);
 
+        // channel specific end signal
+        if (*(unsigned *)buf.data() == (unsigned)-1 && buf.substr(sizeof(unsigned)) == END)
+        {
+            if (sendto(sockfd, buf.data(), buf.size(), 0, (struct sockaddr *)&their_addr, sin_size) == -1)
+            {
+                perror("send");
+                exit(1);
+            }
+        }
+
         if (buf.substr(sizeof(unsigned)) == END)
         {
             if (verbose)
             {
                 std::cout << "total packets expected: " << *(unsigned *)buf.data() << std::endl;
-                std::cout << "total packets received: " << recieved.front() + recieved.size() << std::endl;
+                std::cout << "total packets received: " << received.front() + received.size() << std::endl;
             }
             break;
         }
@@ -132,18 +142,26 @@ int server(std::string port, bool verbose, bool continuous)
             std::cout << "server: packet: " << num << std::endl;
 
         // selective ack
-        while (recieved.size() > 0 && num <= recieved.front() + 1)
+
+        if (received.empty())
+            received.push_back(num);
+        else if (num <= received.front() + 1)
         {
-            recieved.front()++;
-            if (recieved.size() > 1)
-                num = recieved[1];
-            else
-                break;
+            if (num == received.front() + 1)
+                received.front() = num;
+            while (received.size() > 1)
+            {
+                if (received[1] == received.front() + 1)
+                {
+                    received.front() = received[1];
+                    received.erase(received.begin() + 1);
+                }
+            }
         }
-        if (std::find(recieved.begin(), recieved.end(), num) == recieved.end())
+        else if (num > received.front() + 1 && std::find(received.begin(), received.end(), num) == received.end())
         {
-            recieved.push_back(num);
-            std::sort(recieved.begin(), recieved.end());
+            received.push_back(num);
+            std::sort(received.begin(), received.end());
         }
 
 #ifdef DEBUG_SERVER
@@ -156,10 +174,10 @@ int server(std::string port, bool verbose, bool continuous)
         fclose(fp);
 
         // send ack
-        unsigned size = std::min((unsigned)(sizeof(unsigned) * recieved.size()), (unsigned)MAXDATASIZE);
+        unsigned size = std::min((unsigned)(sizeof(unsigned) * received.size()), (unsigned)MAXDATASIZE);
         buf.resize(size);
         for (unsigned i = 0; i < size / sizeof(unsigned); i++)
-            *((unsigned *)buf.data() + i) = recieved[i];
+            *((unsigned *)buf.data() + i) = received[i];
         sendto(sockfd, buf.data(), buf.size(), 0, (struct sockaddr *)&their_addr, sin_size);
 
         buf.resize(MAXDATASIZE);
