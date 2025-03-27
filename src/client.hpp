@@ -195,7 +195,8 @@ int client(std::vector<std::string> ips, std::string port, std::string file, std
 
             write(pipes[i][1], buf.data(), buf.size());
 
-            std::cout << "[" << i << "] packet: " << sent << std::endl; // print which child and packet number
+            if (verbose)
+                std::cout << "[" << i << "] packet: " << sent << std::endl; // print which child and packet number
             // TODO: change to proper algorithm
 
             buf.resize(MAXDATASIZE);
@@ -209,7 +210,8 @@ int client(std::vector<std::string> ips, std::string port, std::string file, std
         *(unsigned *)buf.data() = sent;
         buf.resize(sizeof(unsigned));
         buf += END;
-        std::cout << "total packets: " << sent << std::endl;
+        if (verbose)
+            std::cout << "total packets: " << sent << std::endl;
         write(pipes[rand() % pipes.size()][1], buf.data(), buf.size());
 
         for (auto &pipe : pipes)
