@@ -1,3 +1,4 @@
+// server.cpp
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -13,12 +14,11 @@
 #include <chrono>
 
 #include <iostream>
-#include <string>
-#include <vector>
 #include <bits/stdc++.h>
 #include <algorithm>
 
-#include "helper.hpp"
+#include "server.h"
+#include "helper.h"
 
 // #define DEBUG_SERVER 1
 

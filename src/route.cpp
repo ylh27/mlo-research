@@ -1,29 +1,11 @@
-#include <iostream>
-#include <string>
-#include <vector>
-
-#include "client.hpp"
-#include "server.hpp"
+// route.cpp
+#include "route.h"
+#include "client.h"
+#include "server.h"
 
 // #define DEBUG 1
 
 #define PORT 5001
-
-struct arg
-{
-    std::string mode;
-    std::vector<std::string> ips;
-    std::string port;
-    std::string file;
-    std::string algorithm;
-    bool verbose = false;
-    bool continuous = false;
-};
-
-void print_usage(char *argv)
-{
-    std::cout << "Usage: " << argv << " [-s|-c] [-i <ip>] [-p <port>] [-f <file>] [-a <algorithm>] [-v] [-d]" << std::endl;
-}
 
 int main(int argc, char *argv[])
 {

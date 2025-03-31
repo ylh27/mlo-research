@@ -1,3 +1,4 @@
+// client.cpp
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -11,12 +12,11 @@
 #include <arpa/inet.h>
 
 #include <iostream>
-#include <string>
-#include <vector>
 #include <array>
 #include <chrono>
 
-#include "helper.hpp"
+#include "client.h"
+#include "helper.h"
 
 // #define DEBUG_CLIENT 1
 

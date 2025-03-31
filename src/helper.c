@@ -1,15 +1,5 @@
-#ifndef HELPER
-#define HELPER
-
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <unistd.h>
-#include <signal.h>
-#include <sys/wait.h>
-
-#define END "\r\n\r\nEOF\r\n\r\n"
+// helper.cpp
+# include "helper.h"
 
 void sigchld_handler(int s)
 {
@@ -17,7 +7,6 @@ void sigchld_handler(int s)
         ;
 }
 
-// get sockaddr, IPv4 or IPv6:
 void *get_in_addr(struct sockaddr *sa)
 {
     if (sa->sa_family == AF_INET)
@@ -27,5 +16,3 @@ void *get_in_addr(struct sockaddr *sa)
 
     return &(((struct sockaddr_in6 *)sa)->sin6_addr);
 }
-
-#endif

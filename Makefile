@@ -6,7 +6,9 @@ CXX = g++
 CXXFLAGS = -Wall -g
 
 # Source and object files
-SRC = src/route.cpp
+SRC = src/route.cpp src/client.cpp src/server.cpp src/helper.c
+
+# Object files
 OBJ = $(SRC:.cpp=.o)
 
 # Executable name
