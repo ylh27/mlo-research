@@ -1,30 +1,177 @@
 // client.cpp
+#include <errno.h>
+#include <netdb.h>
+#include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <errno.h>
 #include <string.h>
-#include <netdb.h>
-#include <sys/types.h>
-#include <netinet/in.h>
 #include <sys/socket.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #include <arpa/inet.h>
 
-#include <iostream>
 #include <array>
-#include <chrono>
+#include <iostream>
 
 #include "client.h"
 #include "helper.h"
 
 // #define DEBUG_CLIENT 1
 
-#define MAXDATASIZE 1472 // max number of bytes we can get at once
-#define MAXPAYLOAD (MAXDATASIZE - sizeof(unsigned))
+static bool verbose;
+static int dispatch_pipe[2];
+static std::vector<std::array<int, 2>> pipes;
 
-int client(std::vector<std::string> ips, std::string port, std::string file, std::string algorithm, bool verbose)
-{
+static void master_callback(std::string file) {
+    close(dispatch_pipe[0]); // close read end
+
+    unsigned read = 0; // number of packets sent
+
+    FILE *fp = fopen(file.data(), "rb");
+
+    std::string buf;
+    buf.resize(MAXDATASIZE);
+
+    // read file
+    size_t numbytes;
+    while ((numbytes = fread(buf.data() + sizeof(unsigned), 1, MAXPAYLOAD, fp)) > 0) {
+        *(unsigned *)buf.data() = read;
+        read++;
+        buf.resize(numbytes + sizeof(unsigned));
+
+        while (buf.size() < MAXDATASIZE)
+            buf += ' '; // pad to MAXDATASIZE
+
+#ifdef DEBUG_CLIENT
+        std::cout << "writing to pipe: " << buf.substr(sizeof(sizeof(unsigned))) << std::endl;
+#endif
+
+        if (write(dispatch_pipe[1], buf.data(), buf.size()) < 0) {
+            perror("write");
+            exit(1);
+        }
+    }
+    fclose(fp);
+
+    close(dispatch_pipe[1]); // close write end
+}
+
+static void dispatch_callback() {
+    close(dispatch_pipe[1]); // close write end
+    for (auto &pipe : pipes)
+        close(pipe[0]); // close read end
+
+    // main dispatch loop
+    ssize_t numbytes;
+    std::string buf;
+    buf.resize(MAXDATASIZE);
+    while ((numbytes = read(dispatch_pipe[0], buf.data(), MAXDATASIZE)) > 0) {
+        if (numbytes != MAXDATASIZE) {
+            std::cout << "client: datasize mismatch: " << numbytes << std::endl;
+            continue;
+        }
+
+        write(pipes[rand() % pipes.size()][1], buf.data(), MAXDATASIZE);
+    }
+
+    close(dispatch_pipe[0]); // close read end
+    for (auto &pipe : pipes)
+        close(pipe[1]); // close write end
+}
+
+static void send_callback(std::string ip, std::string port) {
+    int sockfd;
+    ssize_t numbytes;
+    struct addrinfo hints, *servinfo, *p;
+    int rv;
+    char s[INET6_ADDRSTRLEN];
+
+    memset(&hints, 0, sizeof hints);
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_DGRAM;
+
+    close(pipes.back()[1]); // close write end
+
+    if ((rv = getaddrinfo(ip.data(), port.data(), &hints, &servinfo)) != 0) {
+        fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
+        exit(1);
+    }
+
+    // loop through all the results and connect to the first we can
+    for (p = servinfo; p != NULL; p = p->ai_next) {
+        if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
+            perror("client: socket");
+            continue;
+        }
+
+        if (connect(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
+            close(sockfd);
+            perror("client: connect");
+            continue;
+        }
+
+        break;
+    }
+
+    if (p == NULL) {
+        fprintf(stderr, "client: failed to connect\n");
+        exit(2);
+    }
+
+    if (verbose) {
+        inet_ntop(p->ai_family, get_in_addr((struct sockaddr *)p->ai_addr), s, sizeof s);
+        printf("client: connecting to %s\n", s);
+    }
+
+    freeaddrinfo(servinfo); // all done with this structure
+
+    std::string buf;
+    buf.resize(MAXDATASIZE);
+
+    bool start_sent = false;
+    unsigned sent = 0; // number of packets sent
+
+    // send data from pipe
+    while ((numbytes = read(pipes.back()[0], buf.data(), MAXDATASIZE)) > 0) {
+        if (numbytes != MAXDATASIZE) {
+            std::cout << "client: datasize mismatch: " << numbytes << std::endl;
+            continue;
+        }
+
+        if (!start_sent) { // send start signal
+            // TODO
+
+            start_sent = true;
+        }
+
+#ifdef DEBUG_CLIENT
+        std::cout << "sending: " << buf << std::endl;
+#endif
+        if (sendto(sockfd, buf.data(), MAXDATASIZE, 0, p->ai_addr, p->ai_addrlen) == -1) {
+            perror("send");
+            exit(1);
+        }
+        sent++;
+
+        if (verbose)
+            std::cout << "client: sent packet: " << *(unsigned *)buf.data() << std::endl;
+    }
+
+    if (numbytes == -1) {
+        perror("read");
+        exit(1);
+    }
+
+    close(pipes.back()[0]); // close read end
+
+    // send end signal
+    // TODO
+
+    close(sockfd);
+}
+
+int client(std::vector<std::string> ips, std::string port, std::string file, std::string algorithm, bool verbose_) {
 #ifdef DEBUG_CLIENT
     for (auto i : ips)
         std::cout << "ip: " << i << std::endl;
@@ -32,216 +179,82 @@ int client(std::vector<std::string> ips, std::string port, std::string file, std
     std::cout << "file: " << file << std::endl;
     std::cout << "algorithm: " << algorithm << std::endl;
 #endif
-    int sockfd;
-    ssize_t numbytes;
-    struct addrinfo hints, *servinfo, *p;
-    int rv;
-    char s[INET6_ADDRSTRLEN];
-    std::vector<pid_t> children;
-    bool master = true;
-    int status;
-    struct sigaction sa;
+    verbose = verbose_;
 
-    memset(&hints, 0, sizeof hints);
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_DGRAM;
+    std::vector<pid_t> children;
+    struct sigaction sa;
 
     sa.sa_handler = sigchld_handler; // reap all dead processes
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = SA_RESTART;
-    if (sigaction(SIGCHLD, &sa, NULL) == -1)
-    {
+    if (sigaction(SIGCHLD, &sa, NULL) == -1) {
         perror("sigaction");
         exit(1);
     }
 
-    std::vector<std::array<int, 2>> pipes;
-    std::string ip;
-    while (!ips.empty())
-    {
-        ip = ips.back();
-        ips.pop_back();
+    enum { master, dispatch, send } type = master;
 
-        pipes.push_back({0, 0});
-        if (pipe(pipes.back().data()) != 0)
-        {
-            perror("pipe");
-            exit(1);
-        }
-        pid_t child = fork();
-        if (child == 0) // child
-        {
-            master = false;
-            break;
-        }
-        else // parent
-        {
-            children.push_back(child);
-            continue;
-        }
+    // create dispatch
+    if (pipe(dispatch_pipe) != 0) {
+        perror("pipe");
+        exit(1);
     }
+    pid_t dispatch_pid = fork();
+    if (dispatch_pid == 0) // child
+        type = dispatch;
 
-    std::chrono::time_point<std::chrono::system_clock> start, end;
-    if (!master)
-    {
-        close(pipes.back()[1]); // close write end
+    // create children for send
+    std::string ip;
+    if (type == dispatch) { // only fork from dispatch
+        while (!ips.empty()) {
+            ip = ips.back();
+            ips.pop_back();
 
-        if ((rv = getaddrinfo(ip.data(), port.data(), &hints, &servinfo)) != 0)
-        {
-            fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
-            return 1;
-        }
-
-        // loop through all the results and connect to the first we can
-        for (p = servinfo; p != NULL; p = p->ai_next)
-        {
-            if ((sockfd = socket(p->ai_family, p->ai_socktype,
-                                 p->ai_protocol)) == -1)
-            {
-                perror("client: socket");
-                continue;
-            }
-
-            if (connect(sockfd, p->ai_addr, p->ai_addrlen) == -1)
-            {
-                close(sockfd);
-                perror("client: connect");
-                continue;
-            }
-
-            break;
-        }
-
-        if (p == NULL)
-        {
-            fprintf(stderr, "client: failed to connect\n");
-            return 2;
-        }
-
-        inet_ntop(p->ai_family, get_in_addr((struct sockaddr *)p->ai_addr),
-                  s, sizeof s);
-        printf("client: connecting to %s\n", s);
-
-        freeaddrinfo(servinfo); // all done with this structure
-
-        std::string buf;
-        buf.resize(MAXDATASIZE);
-
-        // send data from pipe
-        while ((numbytes = read(pipes.back()[0], buf.data(), MAXDATASIZE)) > 0)
-        {
-            buf.resize(numbytes);
-#ifdef DEBUG_CLIENT
-            std::cout << "sending: " << buf << std::endl;
-#endif
-            if (sendto(sockfd, buf.data(), buf.size(), 0, p->ai_addr, p->ai_addrlen) == -1)
-            {
-                perror("send");
+            pipes.push_back({0, 0});
+            if (pipe(pipes.back().data()) != 0) {
+                perror("pipe");
                 exit(1);
             }
-            buf.clear();
-            buf.resize(MAXDATASIZE);
+            pid_t child = fork();
+            if (child == 0) // child
+            {
+                type = send;
+                break;
+            } else // parent
+            {
+                children.push_back(child);
+                continue;
+            }
         }
-
-        if (numbytes == -1)
-        {
-            perror("read");
-            exit(1);
-        }
-
-        close(pipes.back()[0]); // close read end
-
-        // shutdown sequence
-
-        *(unsigned *)buf.data() = (unsigned)-1;
-        buf.resize(sizeof(unsigned));
-        buf += END;
-
-        // send end signal and calculate rtt
-        start = std::chrono::system_clock::now();
-        if (sendto(sockfd, buf.data(), buf.size(), 0, p->ai_addr, p->ai_addrlen) == -1)
-        {
-            perror("send");
-            exit(1);
-        }
-        if (recvfrom(sockfd, buf.data(), MAXDATASIZE, 0, p->ai_addr, &p->ai_addrlen) == -1)
-        {
-            perror("recvfrom");
-            exit(1);
-        }
-        end = std::chrono::system_clock::now();
-        std::chrono::duration<double, std::milli> elapsed_milliseconds = end - start;
-        std::cout << "pid: " << getpid() << " RTT: " << elapsed_milliseconds.count() << "ms\n";
-
-        close(sockfd);
     }
-    else
-    { // master
 
-        for (auto &pipe : pipes)
-            close(pipe[0]); // close read end
+    switch (type) {
+    case master:
+        master_callback(file);
+        break;
 
-        unsigned sent = 0; // number of packets sent
+    case dispatch:
+        dispatch_callback();
+        break;
 
-        FILE *fp = fopen(file.data(), "rb");
-        if (fp == NULL)
-        {
-            perror("fopen");
-            for (auto &pipe : pipes)
-                close(pipe[1]); // close write end
-            for (auto child : children)
-                kill(child, SIGKILL);
-            exit(1);
+    case send:
+        send_callback(ip, port);
+        break;
+
+    default: // unreachable
+        std::cerr << "Error: unreachable code" << std::endl;
+        exit(1);
+    }
+
+    // wait for all the children to exit before returning
+    if (type == dispatch) {
+        for (auto child : children) {
+            int status;
+            waitpid(child, &status, 0);
         }
-
-        std::string buf;
-        buf.resize(MAXDATASIZE);
-
-        start = std::chrono::system_clock::now();
-        // Start timer as soon as master finishes spawning children
-
-        // read file
-        while ((numbytes = fread(buf.data() + sizeof(unsigned), 1, MAXPAYLOAD, fp)) > 0)
-        {
-            *(unsigned *)buf.data() = sent;
-            sent++;
-            buf.resize(numbytes + sizeof(unsigned));
-
-#ifdef DEBUG_CLIENT
-            std::cout << "writing to pipe: " << buf.substr(sizeof(sizeof(unsigned))) << std::endl;
-#endif
-
-            int i = rand() % pipes.size();
-
-            write(pipes[i][1], buf.data(), buf.size());
-
-            if (verbose)
-                std::cout << "[" << i << "] packet: " << sent << std::endl; // print which child and packet number
-            // TODO: change to proper algorithm
-
-            buf.resize(MAXDATASIZE);
-        }
-        fclose(fp);
-
-        *(unsigned *)buf.data() = sent;
-        buf.resize(sizeof(unsigned));
-        buf += END;
-        if (verbose)
-            std::cout << "total packets: " << sent << std::endl;
-        write(pipes[rand() % pipes.size()][1], buf.data(), buf.size());
-
-        // close all pipes
-        for (auto &pipe : pipes)
-            close(pipe[1]);
-
-        // Waits for all the children to exit before returning
-        while (wait(&status) > 1)
-            ;
-
-        // End Timer Logic Here
-        end = std::chrono::system_clock::now();
-        std::chrono::duration<double, std::milli> elapsed_milliseconds = end - start;
-        std::cout << "elapsed time: " << elapsed_milliseconds.count() << "ms\n";
+    } else if (type == master) {
+        int status;
+        waitpid(dispatch_pid, &status, 0);
     }
 
     return 0;

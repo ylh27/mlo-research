@@ -23,7 +23,6 @@
 // #define DEBUG_SERVER 1
 
 #define BACKLOG 10 // how many pending connections queue will hold
-#define MAXDATASIZE 1472
 
 int server(std::string port, bool verbose, bool continuous)
 {

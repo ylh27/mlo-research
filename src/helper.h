@@ -2,14 +2,16 @@
 #ifndef HELPER_H
 #define HELPER_H
 
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
 #include <arpa/inet.h>
-#include <unistd.h>
+#include <netinet/in.h>
 #include <signal.h>
+#include <sys/socket.h>
+#include <sys/types.h>
 #include <sys/wait.h>
+#include <unistd.h>
 
+#define MAXDATASIZE 1472 // max number of bytes we can get at once
+#define MAXPAYLOAD (MAXDATASIZE - sizeof(unsigned))
 #define END "\r\n\r\nEOF\r\n\r\n"
 
 void sigchld_handler(int);
