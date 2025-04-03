@@ -12,6 +12,7 @@
 
 #define MAXDATASIZE 1472 // max number of bytes we can get at once
 #define MAXPAYLOAD (MAXDATASIZE - sizeof(unsigned))
+#define START "\r\n\r\nSTART\r\n\r\n"
 #define END "\r\n\r\nEOF\r\n\r\n"
 
 void sigchld_handler(int);

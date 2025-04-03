@@ -40,8 +40,7 @@ static void master_callback(std::string file) {
         read++;
         buf.resize(numbytes + sizeof(unsigned));
 
-        while (buf.size() < MAXDATASIZE)
-            buf += ' '; // pad to MAXDATASIZE
+        buf.resize(MAXDATASIZE, ' '); // pad to MAXDATASIZE
 
 #ifdef DEBUG_CLIENT
         std::cout << "writing to pipe: " << buf.substr(sizeof(sizeof(unsigned))) << std::endl;
@@ -53,6 +52,9 @@ static void master_callback(std::string file) {
         }
     }
     fclose(fp);
+
+    if (verbose)
+        std::cout << "client: entire file read" << std::endl;
 
     close(dispatch_pipe[1]); // close write end
 }
@@ -73,7 +75,13 @@ static void dispatch_callback() {
         }
 
         write(pipes[rand() % pipes.size()][1], buf.data(), MAXDATASIZE);
+
+        if (verbose)
+            std::cout << "wrote " << *(unsigned *)buf.data() << " to pipe" << std::endl;
     }
+
+    if (verbose)
+        std::cout << "client: all packets dispatched" << std::endl;
 
     close(dispatch_pipe[0]); // close read end
     for (auto &pipe : pipes)
@@ -81,6 +89,13 @@ static void dispatch_callback() {
 }
 
 static void send_callback(std::string ip, std::string port) {
+    close(dispatch_pipe[0]);
+    close(dispatch_pipe[1]);
+    for (auto pipe = pipes.begin(); *pipe != pipes.back(); pipe++) {
+        close((*pipe)[0]);
+        close((*pipe)[1]);
+    }
+
     int sockfd;
     ssize_t numbytes;
     struct addrinfo hints, *servinfo, *p;
@@ -140,7 +155,16 @@ static void send_callback(std::string ip, std::string port) {
         }
 
         if (!start_sent) { // send start signal
-            // TODO
+            std::string start_buf = START;
+            start_buf.resize(MAXDATASIZE, ' ');
+
+            if (sendto(sockfd, start_buf.data(), MAXDATASIZE, 0, p->ai_addr, p->ai_addrlen) == -1) {
+                perror("send");
+                exit(1);
+            }
+
+            if (verbose)
+                std::cout << "client: sent start signal" << std::endl;
 
             start_sent = true;
         }
@@ -166,7 +190,17 @@ static void send_callback(std::string ip, std::string port) {
     close(pipes.back()[0]); // close read end
 
     // send end signal
-    // TODO
+    buf = buf.substr(0, 4);
+    buf += END;
+    buf.resize(MAXDATASIZE, ' ');
+
+    if (sendto(sockfd, buf.data(), MAXDATASIZE, 0, p->ai_addr, p->ai_addrlen) == -1) {
+        perror("send");
+        exit(1);
+    }
+
+    if (verbose)
+        std::cout << "client: sent end signal" << std::endl;
 
     close(sockfd);
 }
