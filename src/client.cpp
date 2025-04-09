@@ -17,7 +17,7 @@
 #include "client.h"
 #include "helper.h"
 
-// #define DEBUG_CLIENT 1
+#define DEBUG_CLIENT 1
 
 static bool verbose;
 static int dispatch_pipe[2];
@@ -190,14 +190,19 @@ static void send_callback(std::string ip, std::string port) {
     close(pipes.back()[0]); // close read end
 
     // send end signal
-    buf = buf.substr(0, 4);
+    buf = buf.substr(0, sizeof(unsigned));
     buf += END;
     buf.resize(MAXDATASIZE, ' ');
+    *(unsigned *)(buf.data() + sizeof(unsigned) + strlen(END)) = sent;
 
     if (sendto(sockfd, buf.data(), MAXDATASIZE, 0, p->ai_addr, p->ai_addrlen) == -1) {
         perror("send");
         exit(1);
     }
+
+#ifdef DEBUG_CLIENT
+    std::cout << "sending: " << buf << std::endl;
+#endif
 
     if (verbose)
         std::cout << "client: sent end signal" << std::endl;

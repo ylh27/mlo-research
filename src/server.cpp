@@ -95,8 +95,11 @@ int server(std::string port, bool verbose, bool continuous) {
 
     buf.resize(MAXDATASIZE);
 
-    std::vector<unsigned> received;
+    // std::vector<unsigned> received;
+    std::vector<std::pair<std::string, unsigned>> received;                                          // store received packets
     std::vector<std::pair<std::string, std::chrono::time_point<std::chrono::system_clock>>> clients; // store clients and their last received time
+
+    std::chrono::time_point<std::chrono::system_clock> main_start;
 
     // main recv loop
     std::string start_str = START;
@@ -111,6 +114,9 @@ int server(std::string port, bool verbose, bool continuous) {
         if (buf.substr(0, strlen(START)) == start_str) {
             if (verbose)
                 std::cout << "server: received start signal" << std::endl;
+
+            if (clients.empty()) // start main clock
+                main_start = std::chrono::system_clock::now();
 
             std::pair<std::string, std::chrono::time_point<std::chrono::system_clock>> client(s, std::chrono::system_clock::now());
             clients.push_back(client);
@@ -128,9 +134,36 @@ int server(std::string port, bool verbose, bool continuous) {
             if (it != clients.end()) {
                 std::chrono::duration<double, std::milli> elapsed_time = end - it->second;
 
+                unsigned recved;
+                auto recv_it = std::find_if(received.begin(), received.end(), [&](const auto &pair) { return pair.first == s; });
+                if (recv_it != received.end())
+                    recved = recv_it->second + 1;
+                else
+                    recved = 0;
+                unsigned expected = *(unsigned *)(buf.data() + sizeof(unsigned) + strlen(END)) + 1;
+
+                std::cout << "server: received " << recved << " out of " << expected << std::endl;
                 std::cout << "server: client " << s << " total time " << elapsed_time.count() << " ms" << std::endl;
 
+                double bandwidth = recved * MAXDATASIZE / (1000 * elapsed_time.count());
+                std::cout << "server: client " << s << " bandwidth " << bandwidth << " B/s" << std::endl;
+
                 clients.erase(it);
+
+                if (clients.empty()) {
+                    std::chrono::duration<double, std::milli> main_elapsed_time = end - main_start;
+
+                    unsigned tot_recved = 0;
+                    for (auto &pair : received)
+                        tot_recved += pair.second + 1;
+                    expected = *(unsigned *)buf.data() + 2;
+
+                    std::cout << "server: total received " << recved << " out of " << expected << std::endl;
+                    std::cout << "server: total time " << main_elapsed_time.count() << " ms" << std::endl;
+
+                    double main_bandwidth = tot_recved * MAXDATASIZE / (1000 * main_elapsed_time.count());
+                    std::cout << "server: total bandwidth " << main_bandwidth << " B/s" << std::endl;
+                }
             } else {
                 std::cerr << "server: client not found" << std::endl;
             }
@@ -151,8 +184,15 @@ int server(std::string port, bool verbose, bool continuous) {
             if (verbose)
                 std::cout << "server: packet: " << num << std::endl;
 
+            // record received packets
+            auto it = std::find_if(received.begin(), received.end(), [&](const auto &pair) { return pair.first == s; });
+            if (it != received.end())
+                it->second++;
+            else
+                received.push_back({s, 1});
+
             // received
-            if (received.empty())
+            /*if (received.empty())
                 received.push_back(num);
             else if (num <= received.front() + 1) {
                 if (num == received.front() + 1)
@@ -166,7 +206,7 @@ int server(std::string port, bool verbose, bool continuous) {
             } else if (num > received.front() + 1 && std::find(received.begin(), received.end(), num) == received.end()) {
                 received.push_back(num);
                 std::sort(received.begin(), received.end());
-            }
+            }*/
 
 #ifdef DEBUG_SERVER
             std::cout << "server: received '" << buf.substr(sizeof(unsigned)) << "'" << std::endl;
