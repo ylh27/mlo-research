@@ -17,7 +17,7 @@
 #include "client.h"
 #include "helper.h"
 
-#define DEBUG_CLIENT 1
+// #define DEBUG_CLIENT 1
 
 static bool verbose;
 static int dispatch_pipe[2];
