@@ -5,6 +5,6 @@
 #include <string>
 #include <vector>
 
-int client(std::vector<std::string>, std::string, std::string, std::string, bool);
+int client(std::vector<std::string>, std::string, std::string, std::string, bool, bool, unsigned);
 
 #endif // CLIENT_H

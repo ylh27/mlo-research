@@ -15,6 +15,8 @@ struct arg
     std::string algorithm;
     bool verbose = false;
     bool continuous = false;
+    bool trivial = false;
+    unsigned size = 0;
 };
 
 void print_usage(char *argv)

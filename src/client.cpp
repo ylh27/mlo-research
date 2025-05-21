@@ -18,40 +18,60 @@
 #include "helper.h"
 
 // #define DEBUG_CLIENT 1
+#define INITIAL_FLOW 500
 
 static bool verbose;
 static int dispatch_pipe[2];
 static std::vector<std::array<int, 2>> pipes;
 
-static void master_callback(std::string file) {
+static void master_callback(std::string file, bool trivial, unsigned trivial_size) {
     close(dispatch_pipe[0]); // close read end
 
     unsigned read = 0; // number of packets sent
 
-    FILE *fp = fopen(file.data(), "rb");
-
     std::string buf;
     buf.resize(MAXDATASIZE);
 
-    // read file
-    size_t numbytes;
-    while ((numbytes = fread(buf.data() + sizeof(unsigned), 1, MAXPAYLOAD, fp)) > 0) {
-        *(unsigned *)buf.data() = read;
-        read++;
-        buf.resize(numbytes + sizeof(unsigned));
-
-        buf.resize(MAXDATASIZE, ' '); // pad to MAXDATASIZE
+    if (trivial) {
+        while (read < trivial_size) {
+            *(unsigned *)buf.data() = read;
+            read++;
+            buf.resize(MAXDATASIZE, ' '); // pad to MAXDATASIZE
 
 #ifdef DEBUG_CLIENT
-        std::cout << "writing to pipe: " << buf.substr(sizeof(sizeof(unsigned))) << std::endl;
+            std::cout << "writing to pipe: " << buf.substr(sizeof(unsigned)) << std::endl;
 #endif
 
-        if (write(dispatch_pipe[1], buf.data(), buf.size()) < 0) {
-            perror("write");
-            exit(1);
+            if (write(dispatch_pipe[1], buf.data(), buf.size()) < 0) {
+                perror("write");
+                exit(1);
+            }
         }
+
+    } else {
+
+        FILE *fp = fopen(file.data(), "rb");
+
+        // read file
+        size_t numbytes;
+        while ((numbytes = fread(buf.data() + sizeof(unsigned), 1, MAXPAYLOAD, fp)) > 0) {
+            *(unsigned *)buf.data() = read;
+            read++;
+            buf.resize(numbytes + sizeof(unsigned));
+
+            buf.resize(MAXDATASIZE, ' '); // pad to MAXDATASIZE
+
+#ifdef DEBUG_CLIENT
+            std::cout << "writing to pipe: " << buf.substr(sizeof(sizeof(unsigned))) << std::endl;
+#endif
+
+            if (write(dispatch_pipe[1], buf.data(), buf.size()) < 0) {
+                perror("write");
+                exit(1);
+            }
+        }
+        fclose(fp);
     }
-    fclose(fp);
 
     if (verbose)
         std::cout << "client: entire file read" << std::endl;
@@ -149,6 +169,19 @@ static void send_callback(std::string ip, std::string port) {
 
     // send data from pipe
     while ((numbytes = read(pipes.back()[0], buf.data(), MAXDATASIZE)) > 0) {
+
+        // flow control
+        // wait for packet to be sent before queuing next
+        if (sent > INITIAL_FLOW) {
+            // listen for ack
+            std::string ack_buf;
+            ack_buf.resize(MAXDATASIZE);
+            recv(sockfd, ack_buf.data(), MAXDATASIZE, 0);
+
+            if (verbose)
+                std::cout << "client: received ack: " << *(unsigned *)ack_buf.data() << std::endl;
+        }
+
         if (numbytes != MAXDATASIZE) {
             std::cout << "client: datasize mismatch: " << numbytes << std::endl;
             continue;
@@ -210,7 +243,8 @@ static void send_callback(std::string ip, std::string port) {
     close(sockfd);
 }
 
-int client(std::vector<std::string> ips, std::string port, std::string file, std::string algorithm, bool verbose_) {
+int client(std::vector<std::string> ips, std::string port, std::string file, std::string algorithm, bool verbose_, bool trivial,
+           unsigned trivial_size) {
 #ifdef DEBUG_CLIENT
     for (auto i : ips)
         std::cout << "ip: " << i << std::endl;
@@ -269,7 +303,7 @@ int client(std::vector<std::string> ips, std::string port, std::string file, std
 
     switch (type) {
     case master:
-        master_callback(file);
+        master_callback(file, trivial, trivial_size);
         break;
 
     case dispatch:

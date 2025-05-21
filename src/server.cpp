@@ -191,6 +191,16 @@ int server(std::string port, bool verbose, bool continuous) {
             else
                 received.push_back({s, 1});
 
+            // flow control
+            // switch to sender side kernel implementation in the future
+            // send ack to client
+            if (sendto(sockfd, buf.data(), sizeof(unsigned), 0, (struct sockaddr *)&their_addr, sin_size) == -1) {
+                perror("sendto");
+                exit(1);
+            }
+            if (verbose)
+                std::cout << "server: sent ack: " << num << std::endl;
+
             // received
             /*if (received.empty())
                 received.push_back(num);
