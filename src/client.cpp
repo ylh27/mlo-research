@@ -18,7 +18,7 @@
 #include "helper.h"
 
 // #define DEBUG_CLIENT 1
-#define INITIAL_FLOW 500
+#define INITIAL_FLOW 300
 
 static bool verbose;
 static int dispatch_pipe[2];

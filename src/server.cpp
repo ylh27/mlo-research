@@ -145,7 +145,7 @@ int server(std::string port, bool verbose, bool continuous) {
                 std::cout << "server: received " << recved << " out of " << expected << std::endl;
                 std::cout << "server: client " << s << " total time " << elapsed_time.count() << " ms" << std::endl;
 
-                double bandwidth = recved * MAXDATASIZE / (1000 * elapsed_time.count());
+                double bandwidth = recved * MAXDATASIZE / (elapsed_time.count() / 1000);
                 std::cout << "server: client " << s << " bandwidth " << bandwidth << " B/s" << std::endl;
 
                 clients.erase(it);
@@ -161,7 +161,7 @@ int server(std::string port, bool verbose, bool continuous) {
                     std::cout << "server: total received " << recved << " out of " << expected << std::endl;
                     std::cout << "server: total time " << main_elapsed_time.count() << " ms" << std::endl;
 
-                    double main_bandwidth = tot_recved * MAXDATASIZE / (1000 * main_elapsed_time.count());
+                    double main_bandwidth = tot_recved * MAXDATASIZE / (main_elapsed_time.count()/ 1000);
                     std::cout << "server: total bandwidth " << main_bandwidth << " B/s" << std::endl;
                 }
             } else {
