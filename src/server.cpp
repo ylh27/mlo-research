@@ -24,7 +24,7 @@
 
 #define BACKLOG 10 // how many pending connections queue will hold
 
-int server(std::string port, bool verbose, bool continuous) {
+int server(std::string port, bool verbose, bool continuous, bool trivial) {
 #ifdef DEBUG_SERVER
     std::cout << "port: " << port << std::endl;
 #endif
@@ -223,9 +223,11 @@ int server(std::string port, bool verbose, bool continuous) {
 #endif
 
             // write output
-            fp = fopen("output", "a");
-            fwrite(buf.data() + sizeof(unsigned), 1, buf.size() - sizeof(unsigned), fp);
-            fclose(fp);
+            if (!trivial) {
+                fp = fopen("output", "a");
+                fwrite(buf.data() + sizeof(unsigned), 1, buf.size() - sizeof(unsigned), fp);
+                fclose(fp);
+            }
         }
 
         // send ack
@@ -248,7 +250,7 @@ int server(std::string port, bool verbose, bool continuous) {
     close(sockfd);
 
     if (continuous)
-        return server(port, verbose, continuous);
+        return server(port, verbose, continuous, trivial);
 
     return 0;
 }

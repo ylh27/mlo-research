@@ -5,6 +5,6 @@
 #include <vector>
 #include <string>
 
-int server(std::string, bool, bool);
+int server(std::string, bool, bool, bool);
 
 #endif // SERVER_H

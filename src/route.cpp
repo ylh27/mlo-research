@@ -34,8 +34,10 @@ int main(int argc, char *argv[]) {
             arg.continuous = true;
         } else if (std::string(argv[i]) == "-t") {
             arg.trivial = true;
-            arg.size = std::stoul(argv[i + 1]);
-            i++;
+            if (i + 1 < argc) {
+                arg.size = std::stoul(argv[i + 1]);
+                i++;
+            }
         } else {
             print_usage(argv[0]);
             return 1;
@@ -66,7 +68,7 @@ int main(int argc, char *argv[]) {
     }
 
     if (arg.mode == "server") {
-        return server(arg.port, arg.verbose, arg.continuous);
+        return server(arg.port, arg.verbose, arg.continuous, arg.trivial);
     } else if (arg.mode == "client") {
         return client(arg.ips, arg.port, arg.file, arg.algorithm, arg.verbose, arg.trivial, arg.size);
     } else {
