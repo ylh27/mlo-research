@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # server.py
 import socket
 import time
@@ -5,14 +6,10 @@ import struct
 
 # --- Configuration ---
 # The IP address the server will listen on. 
-# '0.0.0.0' makes it listen on all available network interfaces,
-# which is exactly what we need for a multi-homed server.
+# '0.0.0.0' makes it listen on all available network interfaces.
 HOST = '0.0.0.0' 
-# The port to listen on. Must match the client's port.
 PORT = 12345
-# The maximum size of a single UDP datagram.
 BUFFER_SIZE = 65535 
-# A special message from the client to signal the end of the test.
 END_MESSAGE_FLAG = b'__END__'
 
 def run_server():

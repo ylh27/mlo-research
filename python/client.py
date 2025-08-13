@@ -10,16 +10,12 @@ import queue
 
 # --- Configuration ---
 # You must edit this list to include the IP addresses of the
-# multi-homed server you are sending data TO.
-SERVER_IPS = ['127.0.0.1'] # Replace with your server's actual IP addresses
+# server you are sending data TO.
+SERVER_IPS = ['192.168.1.1', '192.168.2.1']
 
-# The port the server is listening on.
 PORT = 12345
-# The size of the random data payload in each packet.
 PACKET_SIZE = 8000
-# The duration of the speed test in seconds.
 TEST_DURATION = 10
-# A special message to signal the end of the test.
 END_MESSAGE_FLAG = b'__END__'
 
 # A thread-safe queue to hold packets from the master to the workers.
